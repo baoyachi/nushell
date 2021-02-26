@@ -10,7 +10,7 @@ pub struct FromSSV;
 
 #[derive(Deserialize)]
 pub struct FromSSVArgs {
-    headerless: bool,
+    noheaders: bool,
     #[serde(rename(deserialize = "aligned-columns"))]
     aligned_columns: bool,
     #[serde(rename(deserialize = "minimum-spaces"))]
@@ -29,9 +29,9 @@ impl WholeStreamCommand for FromSSV {
     fn signature(&self) -> Signature {
         Signature::build(STRING_REPRESENTATION)
             .switch(
-                "headerless",
+                "noheaders",
                 "don't treat the first row as column names",
-                None,
+                Some('n'),
             )
             .switch("aligned-columns", "assume columns are aligned", Some('a'))
             .named(
@@ -196,14 +196,14 @@ fn parse_separated_columns<'a>(
 
 fn string_to_table(
     s: &str,
-    headerless: bool,
+    noheaders: bool,
     aligned_columns: bool,
     split_at: usize,
 ) -> Vec<Vec<(String, String)>> {
     let mut lines = s.lines().filter(|l| !l.trim().is_empty());
     let separator = " ".repeat(std::cmp::max(split_at, 1));
 
-    let (ls, header_options) = if headerless {
+    let (ls, header_options) = if noheaders {
         (lines, HeaderOptions::WithoutHeaders)
     } else {
         match lines.next() {
@@ -223,13 +223,13 @@ fn string_to_table(
 
 fn from_ssv_string_to_value(
     s: &str,
-    headerless: bool,
+    noheaders: bool,
     aligned_columns: bool,
     split_at: usize,
     tag: impl Into<Tag>,
-) -> Option<Value> {
+) -> Value {
     let tag = tag.into();
-    let rows = string_to_table(s, headerless, aligned_columns, split_at)
+    let rows = string_to_table(s, noheaders, aligned_columns, split_at)
         .iter()
         .map(|row| {
             let mut tagged_dict = TaggedDictBuilder::new(&tag);
@@ -244,14 +244,14 @@ fn from_ssv_string_to_value(
         })
         .collect();
 
-    Some(UntaggedValue::Table(rows).into_value(&tag))
+    UntaggedValue::Table(rows).into_value(&tag)
 }
 
 async fn from_ssv(args: CommandArgs) -> Result<OutputStream, ShellError> {
     let name = args.call_info.name_tag.clone();
     let (
         FromSSVArgs {
-            headerless,
+            noheaders,
             aligned_columns,
             minimum_spaces,
         },
@@ -266,28 +266,18 @@ async fn from_ssv(args: CommandArgs) -> Result<OutputStream, ShellError> {
     Ok(
         match from_ssv_string_to_value(
             &concat_string.item,
-            headerless,
+            noheaders,
             aligned_columns,
             split_at,
             name.clone(),
         ) {
-            Some(x) => match x {
-                Value {
-                    value: UntaggedValue::Table(list),
-                    ..
-                } => futures::stream::iter(list.into_iter().map(ReturnSuccess::value))
-                    .to_output_stream(),
-                x => OutputStream::one(ReturnSuccess::value(x)),
-            },
-            None => {
-                return Err(ShellError::labeled_error_with_secondary(
-                    "Could not parse as SSV",
-                    "input cannot be parsed ssv",
-                    &name,
-                    "value originates from here",
-                    &concat_string.tag,
-                ));
+            Value {
+                value: UntaggedValue::Table(list),
+                ..
+            } => {
+                futures::stream::iter(list.into_iter().map(ReturnSuccess::value)).to_output_stream()
             }
+            x => OutputStream::one(ReturnSuccess::value(x)),
         },
     )
 }
@@ -333,7 +323,7 @@ mod tests {
     }
 
     #[test]
-    fn it_uses_first_row_as_data_when_headerless() {
+    fn it_uses_first_row_as_data_when_noheaders() {
         let input = r#"
             a b
             1 2
@@ -445,7 +435,7 @@ mod tests {
     }
 
     #[test]
-    fn it_handles_empty_values_when_headerless_and_aligned_columns() {
+    fn it_handles_empty_values_when_noheaders_and_aligned_columns() {
         let input = r#"
             a multi-word value  b           d
             1                        3-3    4
@@ -489,11 +479,11 @@ mod tests {
                 kubernetes-ro     component=apiserver,provider=kubernetes   <none>                    172.30.0.1      80/TCP
             "#;
 
-        let aligned_columns_headerless = string_to_table(input, true, true, 2);
-        let separator_headerless = string_to_table(input, true, false, 2);
+        let aligned_columns_noheaders = string_to_table(input, true, true, 2);
+        let separator_noheaders = string_to_table(input, true, false, 2);
         let aligned_columns_with_headers = string_to_table(input, false, true, 2);
         let separator_with_headers = string_to_table(input, false, false, 2);
-        assert_eq!(aligned_columns_headerless, separator_headerless);
+        assert_eq!(aligned_columns_noheaders, separator_noheaders);
         assert_eq!(aligned_columns_with_headers, separator_with_headers);
     }
 
@@ -502,6 +492,6 @@ mod tests {
         use super::FromSSV;
         use crate::examples::test as test_examples;
 
-        Ok(test_examples(FromSSV {})?)
+        test_examples(FromSSV {})
     }
 }

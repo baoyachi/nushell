@@ -69,8 +69,17 @@ impl WholeStreamCommand for WithEnv {
 }
 
 async fn with_env(raw_args: CommandArgs) -> Result<OutputStream, ShellError> {
-    let context = EvaluationContext::from_raw(&raw_args);
-    let (WithEnvArgs { variable, block }, input) = raw_args.process().await?;
+    let redirection = raw_args.call_info.args.external_redirection;
+    let context = EvaluationContext::from_args(&raw_args);
+    let (
+        WithEnvArgs {
+            variable,
+            mut block,
+        },
+        input,
+    ) = raw_args.process().await?;
+
+    block.block.set_redirect(redirection);
 
     let mut env = IndexMap::new();
 
@@ -123,6 +132,6 @@ mod tests {
     fn examples_work_as_expected() -> Result<(), ShellError> {
         use crate::examples::test as test_examples;
 
-        Ok(test_examples(WithEnv {})?)
+        test_examples(WithEnv {})
     }
 }

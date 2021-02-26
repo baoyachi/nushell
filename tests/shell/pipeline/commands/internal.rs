@@ -34,192 +34,6 @@ fn takes_rows_of_nu_value_strings_and_pipes_it_to_stdin_of_external() {
     })
 }
 
-#[cfg(feature = "directories-support")]
-#[cfg(feature = "which-support")]
-#[test]
-fn autoenv() {
-    use nu_test_support::fs::Stub::FileWithContent;
-    Playground::setup("autoenv_test", |dirs, sandbox| {
-        sandbox.mkdir("foo/bar");
-        sandbox.mkdir("bizz/buzz");
-        sandbox.mkdir("foob");
-
-        // Windows uses a different command to create an empty file so we need to have different content on windows.
-        let full_nu_env = if cfg!(target_os = "windows") {
-            r#"[env]
-                testkey = "testvalue"
-
-                [scriptvars]
-                myscript = "echo myval"
-
-                [scripts]
-                entryscripts = ["echo nul > hello.txt"]
-                exitscripts = ["echo nul > bye.txt"]"#
-        } else {
-            r#"[env]
-                testkey = "testvalue"
-
-                [scriptvars]
-                myscript = "echo myval"
-
-                [scripts]
-                entryscripts = ["touch hello.txt"]
-                exitscripts = ["touch bye.txt"]"#
-        };
-
-        sandbox.with_files(vec![
-            FileWithContent(".nu-env", full_nu_env),
-            FileWithContent(
-                "foo/.nu-env",
-                r#"[env]
-                    overwrite_me = "set_in_foo"
-                    fookey = "fooval" "#,
-            ),
-            FileWithContent(
-                "foo/bar/.nu-env",
-                r#"[env]
-                    overwrite_me = "set_in_bar""#,
-            ),
-            FileWithContent("bizz/.nu-env", full_nu_env),
-        ]);
-
-        //Make sure basic keys are set
-        let actual = nu!(
-            cwd: dirs.test(),
-            r#"autoenv trust .
-               echo $nu.env.testkey"#
-        );
-        assert!(actual.out.ends_with("testvalue"));
-
-        // Make sure exitscripts are run in the directory they were specified.
-        let actual = nu!(
-            cwd: dirs.test(),
-            r#"autoenv trust
-               cd ..
-               cd autoenv_test
-               ls
-               ls | where name == "bye.txt" | get name"#
-        );
-        assert!(actual.out.contains("bye.txt"));
-
-        // Make sure entry scripts are run
-        let actual = nu!(
-            cwd: dirs.test(),
-            r#"cd ..
-               autoenv trust autoenv_test
-               cd autoenv_test
-               ls | where name == "hello.txt" | get name"#
-        );
-        assert!(actual.out.contains("hello.txt"));
-
-        // If inside a directory with exitscripts, entering a subdirectory should not trigger the exitscripts.
-        let actual = nu!(
-            cwd: dirs.test(),
-            r#"autoenv trust
-               cd foob
-               ls | where name == "bye.txt" | get name"#
-        );
-        assert!(!actual.out.contains("bye.txt"));
-
-        // Make sure entryscripts are run when re-visiting a directory
-        let actual = nu!(
-            cwd: dirs.test(),
-            r#"autoenv trust bizz
-               cd bizz
-               rm hello.txt
-               cd ..
-               cd bizz
-               ls | where name == "hello.txt" | get name"#
-        );
-        assert!(actual.out.contains("hello.txt"));
-
-        // Entryscripts should not run after changing to a subdirectory.
-        let actual = nu!(
-            cwd: dirs.test(),
-            r#"autoenv trust bizz
-               cd bizz
-               cd buzz
-               ls | where name == hello.txt | get name"#
-        );
-        assert!(!actual.out.ends_with("hello.txt"));
-
-        //Backing out of the directory should unset the keys
-        // let actual = nu!(
-        //     cwd: dirs.test(),
-        //     r#"cd ..
-        //        echo $nu.env.testkey"#
-        // );
-        // assert!(!actual.out.ends_with("testvalue"));
-
-        // Make sure script keys are set
-        let actual = nu!(
-            cwd: dirs.test(),
-            r#"echo $nu.env.myscript"#
-        );
-        assert!(actual.out.ends_with("myval"));
-
-        //Going to sibling directory without passing parent should work.
-        let actual = nu!(
-            cwd: dirs.test(),
-            r#"autoenv trust foo
-               cd foob
-               cd ../foo
-               echo $nu.env.fookey
-               cd .."#
-        );
-        assert!(actual.out.ends_with("fooval"));
-
-        //Going to sibling directory should unset keys
-        // let actual = nu!(
-        //     cwd: dirs.test(),
-        //     r#"cd foo
-        //        cd ../foob
-        //        echo $nu.env.fookey
-        //        cd .."#
-        // );
-        // assert!(!actual.out.ends_with("fooval"));
-
-        // Make sure entry scripts are run
-        let actual = nu!(
-            cwd: dirs.test(),
-            r#"ls | where name == "hello.txt" | get name"#
-        );
-        assert!(actual.out.contains("hello.txt"));
-
-        //Variables set in parent directories should be set even if you directly cd to a subdir
-        let actual = nu!(
-            cwd: dirs.test(),
-            r#"autoenv trust foo
-                   cd foo/bar
-                   autoenv trust
-                   echo $nu.env.fookey"#
-        );
-        assert!(actual.out.ends_with("fooval"));
-
-        //Subdirectories should overwrite the values of parent directories.
-        let actual = nu!(
-            cwd: dirs.test(),
-            r#"autoenv trust foo
-                   cd foo/bar
-                   autoenv trust
-                   echo $nu.env.overwrite_me"#
-        );
-        assert!(actual.out.ends_with("set_in_bar"));
-
-        //Make sure that overwritten values are restored.
-        //By deleting foo/.nu-env, we make sure that the value is actually restored and not just set again by autoenv when we re-visit foo.
-        let actual = nu!(
-            cwd: dirs.test(),
-            r#"cd foo
-                   cd bar
-                   rm ../.nu-env
-                   cd ..
-                   echo $nu.env.overwrite_me"#
-        );
-        assert!(actual.out.ends_with("set_in_foo"))
-    })
-}
-
 #[test]
 fn invocation_properly_redirects() {
     let actual = nu!(
@@ -759,7 +573,9 @@ fn filesize_math() {
         "#
     );
 
-    assert_eq!(actual.out, "1.0 MB");
+    assert_eq!(actual.out, "1000.0 KB");
+    // why 1000.0 KB instead of 1.0 MB?
+    // looks like `byte.get_appropriate_unit(false)` behaves this way
 }
 
 #[test]
@@ -783,7 +599,7 @@ fn filesize_math3() {
         "#
     );
 
-    assert_eq!(actual.out, "10.2 KB");
+    assert_eq!(actual.out, "10.0 KB");
 }
 #[test]
 fn filesize_math4() {
@@ -794,7 +610,43 @@ fn filesize_math4() {
         "#
     );
 
-    assert_eq!(actual.out, "512.0 KB");
+    assert_eq!(actual.out, "500.0 KB");
+}
+
+#[test]
+fn filesize_math5() {
+    let actual = nu!(
+        cwd: ".",
+        r#"
+        = 1001 * 1kb
+        "#
+    );
+
+    assert_eq!(actual.out, "1.0 MB");
+}
+
+#[test]
+fn filesize_math6() {
+    let actual = nu!(
+        cwd: ".",
+        r#"
+        = 1001 * 1mb
+        "#
+    );
+
+    assert_eq!(actual.out, "1.0 GB");
+}
+
+#[test]
+fn filesize_math7() {
+    let actual = nu!(
+        cwd: ".",
+        r#"
+        = 1001 * 1gb
+        "#
+    );
+
+    assert_eq!(actual.out, "1.0 TB");
 }
 
 #[test]

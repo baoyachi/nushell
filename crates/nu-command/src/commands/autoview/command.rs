@@ -240,7 +240,7 @@ pub async fn autoview(context: RunnableContext) -> Result<OutputStream, ShellErr
                                     key.to_string(),
                                     TextStyle::new()
                                         .alignment(nu_table::Alignment::Left)
-                                        .fg(ansi_term::Color::Green)
+                                        .fg(nu_ansi_term::Color::Green)
                                         .bold(Some(true)),
                                 ),
                                 nu_table::StyledString::new(
@@ -316,6 +316,6 @@ mod tests {
     fn examples_work_as_expected() -> Result<(), ShellError> {
         use crate::examples::test as test_examples;
 
-        Ok(test_examples(Command {})?)
+        test_examples(Command {})
     }
 }

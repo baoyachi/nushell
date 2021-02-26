@@ -98,6 +98,8 @@ pub(crate) mod reject;
 pub(crate) mod rename;
 pub(crate) mod reverse;
 pub(crate) mod rm;
+pub(crate) mod roll;
+pub(crate) mod rotate;
 pub(crate) mod run_external;
 pub(crate) mod save;
 pub(crate) mod select;
@@ -115,6 +117,7 @@ pub(crate) mod split_by;
 pub(crate) mod str_;
 pub(crate) mod table;
 pub(crate) mod tags;
+pub(crate) mod termsize;
 pub(crate) mod to;
 pub(crate) mod to_csv;
 pub(crate) mod to_html;
@@ -138,6 +141,7 @@ pub(crate) use autoview::Autoview;
 pub(crate) use cd::Cd;
 
 pub(crate) use ansi::Ansi;
+pub(crate) use ansi::AnsiStrip;
 pub(crate) use append::Command as Append;
 pub(crate) use autoenv::Autoenv;
 pub(crate) use autoenv_trust::AutoenvTrust;
@@ -159,7 +163,7 @@ pub(crate) use def::Def;
 pub(crate) use default::Default;
 pub(crate) use describe::Describe;
 pub(crate) use do_::Do;
-pub(crate) use drop::Drop;
+pub(crate) use drop::{Drop, DropColumn};
 pub(crate) use du::Du;
 pub(crate) use each::Each;
 pub(crate) use each::EachGroup;
@@ -197,7 +201,7 @@ pub(crate) use from_xlsx::FromXLSX;
 pub(crate) use from_xml::FromXML;
 pub(crate) use from_yaml::FromYAML;
 pub(crate) use from_yaml::FromYML;
-pub(crate) use get::Get;
+pub(crate) use get::Command as Get;
 pub(crate) use group_by::Command as GroupBy;
 pub(crate) use group_by_date::GroupByDate;
 pub(crate) use hash_::{Hash, HashBase64};
@@ -243,9 +247,11 @@ pub(crate) use reject::Reject;
 pub(crate) use rename::Rename;
 pub(crate) use reverse::Reverse;
 pub(crate) use rm::Remove;
+pub(crate) use roll::{Roll, RollColumn, RollUp};
+pub(crate) use rotate::{Rotate, RotateCounterClockwise};
 pub(crate) use run_external::RunExternalCommand;
 pub(crate) use save::Save;
-pub(crate) use select::Select;
+pub(crate) use select::Command as Select;
 pub(crate) use seq::Seq;
 pub(crate) use seq_dates::SeqDates;
 pub(crate) use shells::Shells;
@@ -265,11 +271,12 @@ pub(crate) use str_::{
 };
 pub(crate) use table::Table;
 pub(crate) use tags::Tags;
+pub(crate) use termsize::TermSize;
 pub(crate) use to::To;
 pub(crate) use to_csv::ToCSV;
 pub(crate) use to_html::ToHTML;
 pub(crate) use to_json::ToJSON;
-pub(crate) use to_md::ToMarkdown;
+pub(crate) use to_md::Command as ToMarkdown;
 pub(crate) use to_toml::ToTOML;
 pub(crate) use to_tsv::ToTSV;
 pub(crate) use to_url::ToURL;
@@ -299,6 +306,8 @@ mod tests {
             whole_stream_command(Move),
             whole_stream_command(Update),
             whole_stream_command(Empty),
+            // whole_stream_command(Select),
+            // whole_stream_command(Get),
             // Str Command Suite
             whole_stream_command(Str),
             whole_stream_command(StrToDecimal),
@@ -327,6 +336,7 @@ mod tests {
             whole_stream_command(StrKebabCase),
             whole_stream_command(StrSnakeCase),
             whole_stream_command(StrScreamingSnakeCase),
+            whole_stream_command(ToMarkdown),
         ]
     }
 

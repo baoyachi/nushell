@@ -53,6 +53,19 @@ pub struct FormatInlineShape {
     column: Option<Column>,
 }
 
+pub fn get_config_filesize_metric() -> bool {
+    let res = crate::config::config(Tag::unknown());
+    if res.is_err() {
+        return true;
+    }
+    let value = res
+        .unwrap_or_default()
+        .get("filesize_metric")
+        .map(|s| s.value.is_true())
+        .unwrap_or(true);
+    value
+}
+
 impl InlineShape {
     pub fn from_primitive(primitive: &Primitive) -> InlineShape {
         match primitive {
@@ -128,15 +141,21 @@ impl InlineShape {
         }
     }
 
-    pub fn format_bytes(bytesize: &BigInt) -> (DbgDocBldr, String) {
+    pub fn format_bytes(bytesize: &BigInt, forced_format: Option<&str>) -> (DbgDocBldr, String) {
         use bigdecimal::ToPrimitive;
 
         // get the config value, if it doesn't exist make it 'auto' so it works how it originally did
-        let filesize_format_var = crate::config::config(Tag::unknown())
-            .expect("unable to get the config.toml file")
-            .get("filesize_format")
-            .map(|val| val.convert_to_string().to_ascii_lowercase())
-            .unwrap_or_else(|| "auto".to_string());
+        let filesize_format_var;
+        if let Some(fmt) = forced_format {
+            filesize_format_var = fmt.to_ascii_lowercase();
+        } else {
+            filesize_format_var = crate::config::config(Tag::unknown())
+                .expect("unable to get the config.toml file")
+                .get("filesize_format")
+                .map(|val| val.convert_to_string().to_ascii_lowercase())
+                .unwrap_or_else(|| "auto".to_string());
+        }
+
         // if there is a value, match it to one of the valid values for byte units
         let filesize_format = match filesize_format_var.as_str() {
             "b" => (byte_unit::ByteUnit::B, ""),
@@ -159,16 +178,16 @@ impl InlineShape {
 
         if let Some(value) = bytesize.to_u128() {
             let byte = byte_unit::Byte::from_bytes(value);
-            let byte = if filesize_format.0 == byte_unit::ByteUnit::B && filesize_format.1 == "auto"
-            {
-                byte.get_appropriate_unit(false)
-            } else {
-                byte.get_adjusted_unit(filesize_format.0)
-            };
+            let adj_byte =
+                if filesize_format.0 == byte_unit::ByteUnit::B && filesize_format.1 == "auto" {
+                    byte.get_appropriate_unit(!get_config_filesize_metric())
+                } else {
+                    byte.get_adjusted_unit(filesize_format.0)
+                };
 
-            match byte.get_unit() {
+            match adj_byte.get_unit() {
                 byte_unit::ByteUnit::B => {
-                    let locale_byte = byte.get_value() as u64;
+                    let locale_byte = adj_byte.get_value() as u64;
                     let locale_byte_string = locale_byte.to_formatted_string(&Locale::en);
                     if filesize_format.1 == "auto" {
                         let doc = (DbgDocBldr::primitive(locale_byte_string)
@@ -182,7 +201,7 @@ impl InlineShape {
                     }
                 }
                 _ => {
-                    let doc = DbgDocBldr::primitive(byte.format(1));
+                    let doc = DbgDocBldr::primitive(adj_byte.format(1));
                     (doc.clone(), InlineShape::render_doc(&doc))
                 }
             }
@@ -233,7 +252,7 @@ impl PrettyDebug for FormatInlineShape {
                     + right.clone().format().pretty()
             }
             InlineShape::Bytesize(bytesize) => {
-                let bytes = InlineShape::format_bytes(bytesize);
+                let bytes = InlineShape::format_bytes(bytesize, None);
                 bytes.0
             }
             InlineShape::String(string) => DbgDocBldr::primitive(string),
@@ -245,12 +264,12 @@ impl PrettyDebug for FormatInlineShape {
             InlineShape::GlobPattern(pattern) => DbgDocBldr::primitive(pattern),
             InlineShape::Boolean(boolean) => DbgDocBldr::primitive(
                 match (boolean, column) {
-                    (true, None) => "Yes",
-                    (false, None) => "No",
+                    (true, None) => "true",
+                    (false, None) => "false",
                     (true, Some(Column::String(s))) if !s.is_empty() => s,
                     (false, Some(Column::String(s))) if !s.is_empty() => "",
-                    (true, Some(_)) => "Yes",
-                    (false, Some(_)) => "No",
+                    (true, Some(_)) => "true",
+                    (false, Some(_)) => "false",
                 }
                 .to_owned(),
             ),
@@ -330,21 +349,21 @@ pub enum Column {
     Value,
 }
 
-impl Into<Column> for String {
-    fn into(self) -> Column {
-        Column::String(self)
+impl From<String> for Column {
+    fn from(x: String) -> Self {
+        Column::String(x)
     }
 }
 
-impl Into<Column> for &String {
-    fn into(self) -> Column {
-        Column::String(self.clone())
+impl From<&String> for Column {
+    fn from(x: &String) -> Self {
+        Column::String(x.clone())
     }
 }
 
-impl Into<Column> for &str {
-    fn into(self) -> Column {
-        Column::String(self.to_string())
+impl From<&str> for Column {
+    fn from(x: &str) -> Self {
+        Column::String(x.to_string())
     }
 }
 

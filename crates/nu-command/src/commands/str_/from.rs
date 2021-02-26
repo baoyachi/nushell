@@ -132,7 +132,7 @@ pub fn action(
             Primitive::Date(a_date) => a_date.format("%c").to_string(),
             Primitive::FilePath(a_filepath) => a_filepath.as_path().display().to_string(),
             Primitive::Filesize(a_filesize) => {
-                let byte_string = InlineShape::format_bytes(a_filesize);
+                let byte_string = InlineShape::format_bytes(a_filesize, None);
                 byte_string.1
             }
             _ => {
@@ -252,6 +252,6 @@ mod tests {
     fn examples_work_as_expected() -> Result<(), ShellError> {
         use crate::examples::test as test_examples;
 
-        Ok(test_examples(SubCommand {})?)
+        test_examples(SubCommand {})
     }
 }

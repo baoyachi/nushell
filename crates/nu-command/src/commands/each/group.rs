@@ -46,7 +46,7 @@ impl WholeStreamCommand for EachGroup {
     }
 
     async fn run(&self, raw_args: CommandArgs) -> Result<OutputStream, ShellError> {
-        let context = Arc::new(EvaluationContext::from_raw(&raw_args));
+        let context = Arc::new(EvaluationContext::from_args(&raw_args));
         let (each_args, input): (EachGroupArgs, _) = raw_args.process().await?;
         let block = Arc::new(Box::new(each_args.block));
 
@@ -111,6 +111,6 @@ mod tests {
     fn examples_work_as_expected() -> Result<(), ShellError> {
         use crate::examples::test as test_examples;
 
-        Ok(test_examples(EachGroup {})?)
+        test_examples(EachGroup {})
     }
 }

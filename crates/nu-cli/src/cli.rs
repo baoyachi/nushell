@@ -29,8 +29,9 @@ use rustyline::{self, error::ReadlineError};
 use crate::EnvironmentSyncer;
 use nu_errors::ShellError;
 use nu_parser::ParserScope;
-use nu_protocol::{UntaggedValue, Value};
+use nu_protocol::{hir::ExternalRedirection, UntaggedValue, Value};
 
+use log::trace;
 use std::error::Error;
 use std::iter::Iterator;
 use std::path::PathBuf;
@@ -48,16 +49,14 @@ pub fn search_paths() -> Vec<std::path::PathBuf> {
     }
 
     if let Ok(config) = nu_data::config::config(Tag::unknown()) {
-        if let Some(plugin_dirs) = config.get("plugin_dirs") {
-            if let Value {
-                value: UntaggedValue::Table(pipelines),
-                ..
-            } = plugin_dirs
-            {
-                for pipeline in pipelines {
-                    if let Ok(plugin_dir) = pipeline.as_string() {
-                        search_paths.push(PathBuf::from(plugin_dir));
-                    }
+        if let Some(Value {
+            value: UntaggedValue::Table(pipelines),
+            ..
+        }) = config.get("plugin_dirs")
+        {
+            for pipeline in pipelines {
+                if let Ok(plugin_dir) = pipeline.as_string() {
+                    search_paths.push(PathBuf::from(plugin_dir));
                 }
             }
         }
@@ -118,7 +117,19 @@ pub async fn cli(mut context: EvaluationContext) -> Result<(), Box<dyn Error>> {
         rl.set_helper(helper);
     });
 
+    // start time for command duration
+    let startup_commands_start_time = std::time::Instant::now();
+    // run the startup commands
     let _ = run_startup_commands(&mut context, &configuration).await;
+    // Store cmd duration in an env var
+    context.scope.add_env_var(
+        "CMD_DURATION",
+        format!("{:?}", startup_commands_start_time.elapsed()),
+    );
+    trace!(
+        "startup commands took {:?}",
+        startup_commands_start_time.elapsed()
+    );
 
     // Give ourselves a scope to work in
     context.scope.enter_scope();
@@ -142,7 +153,7 @@ pub async fn cli(mut context: EvaluationContext) -> Result<(), Box<dyn Error>> {
 
     #[cfg(windows)]
     {
-        let _ = ansi_term::enable_ansi_support();
+        let _ = nu_ansi_term::enable_ansi_support();
     }
 
     let mut ctrlcbreak = false;
@@ -160,7 +171,9 @@ pub async fn cli(mut context: EvaluationContext) -> Result<(), Box<dyn Error>> {
                 let prompt_line = prompt.as_string()?;
 
                 context.scope.enter_scope();
-                let (prompt_block, err) = nu_parser::parse(&prompt_line, 0, &context.scope);
+                let (mut prompt_block, err) = nu_parser::parse(&prompt_line, 0, &context.scope);
+
+                prompt_block.set_redirect(ExternalRedirection::Stdout);
 
                 if err.is_some() {
                     context.scope.exit_scope();
@@ -227,6 +240,9 @@ pub async fn cli(mut context: EvaluationContext) -> Result<(), Box<dyn Error>> {
             session_text.push('\n');
         }
 
+        // start time for command duration
+        let cmd_start_time = std::time::Instant::now();
+
         let line = match convert_rustyline_result_to_string(readline) {
             LineResult::Success(_) => {
                 process_script(
@@ -240,6 +256,11 @@ pub async fn cli(mut context: EvaluationContext) -> Result<(), Box<dyn Error>> {
             }
             x => x,
         };
+
+        // Store cmd duration in an env var
+        context
+            .scope
+            .add_env_var("CMD_DURATION", format!("{:?}", cmd_start_time.elapsed()));
 
         // Check the config to see if we need to update the path
         // TODO: make sure config is cached so we don't path this load every call
@@ -412,7 +433,7 @@ mod tests {
     #[quickcheck]
     fn quickcheck_parse(data: String) -> bool {
         let (tokens, err) = nu_parser::lex(&data, 0);
-        let (lite_block, err2) = nu_parser::block(tokens);
+        let (lite_block, err2) = nu_parser::parse_block(tokens);
         if err.is_none() && err2.is_none() {
             let context = basic_evaluation_context().unwrap();
             let _ = nu_parser::classify_block(&lite_block, &context.scope);

@@ -95,7 +95,7 @@ async fn process_row(
 
 async fn reduce(raw_args: CommandArgs) -> Result<OutputStream, ShellError> {
     let span = raw_args.call_info.name_tag.span;
-    let context = Arc::new(EvaluationContext::from_raw(&raw_args));
+    let context = Arc::new(EvaluationContext::from_args(&raw_args));
     let (reduce_args, mut input): (ReduceArgs, _) = raw_args.process().await?;
     let block = Arc::new(reduce_args.block);
     let (ioffset, start) = if !input.is_empty() {
@@ -195,6 +195,6 @@ mod tests {
     fn examples_work_as_expected() -> Result<(), ShellError> {
         use crate::examples::test as test_examples;
 
-        Ok(test_examples(Reduce {})?)
+        test_examples(Reduce {})
     }
 }

@@ -9,10 +9,11 @@ use nu_protocol::hir::{
     Unit,
 };
 use nu_protocol::{NamedType, PositionalType, Signature, SyntaxShape, UnspannedPathMember};
-use nu_source::{Span, Spanned, SpannedItem};
+use nu_source::{HasSpan, Span, Spanned, SpannedItem};
 use num_bigint::BigInt;
 
-use crate::lex::{block, lex, LiteBlock, LiteCommand, LitePipeline};
+use crate::lex::lexer::{lex, parse_block};
+use crate::lex::tokens::{LiteBlock, LiteCommand, LitePipeline};
 use crate::path::expand_path;
 use crate::scope::ParserScope;
 use bigdecimal::BigDecimal;
@@ -331,6 +332,9 @@ fn parse_unit(lite_arg: &Spanned<String>) -> (SpannedExpression, Option<ParseErr
         (Unit::Gigabyte, vec!["gb", "GB", "Gb", "gB"]),
         (Unit::Terabyte, vec!["tb", "TB", "Tb", "tB"]),
         (Unit::Petabyte, vec!["pb", "PB", "Pb", "pB"]),
+        (Unit::Kibibyte, vec!["KiB", "kib", "kiB", "Kib"]),
+        (Unit::Mebibyte, vec!["MiB", "mib", "miB", "Mib"]),
+        (Unit::Gibibyte, vec!["GiB", "gib", "giB", "Gib"]),
         (Unit::Nanosecond, vec!["ns"]),
         (Unit::Microsecond, vec!["us"]),
         (Unit::Millisecond, vec!["ms"]),
@@ -345,27 +349,26 @@ fn parse_unit(lite_arg: &Spanned<String>) -> (SpannedExpression, Option<ParseErr
 
     for unit_group in unit_groups.iter() {
         for unit in unit_group.1.iter() {
-            if lite_arg.item.ends_with(unit) {
-                let mut lhs = lite_arg.item.clone();
+            if !lite_arg.item.ends_with(unit) {
+                continue;
+            }
+            let mut lhs = lite_arg.item.clone();
 
-                for _ in 0..unit.len() {
-                    lhs.pop();
-                }
+            for _ in 0..unit.len() {
+                lhs.pop();
+            }
 
-                // these units are allowed to be signed
-                if let Ok(x) = lhs.parse::<i64>() {
-                    let lhs_span =
-                        Span::new(lite_arg.span.start(), lite_arg.span.start() + lhs.len());
-                    let unit_span =
-                        Span::new(lite_arg.span.start() + lhs.len(), lite_arg.span.end());
-                    return (
-                        SpannedExpression::new(
-                            Expression::unit(x.spanned(lhs_span), unit_group.0.spanned(unit_span)),
-                            lite_arg.span,
-                        ),
-                        None,
-                    );
-                }
+            // these units are allowed to be signed
+            if let Ok(x) = lhs.parse::<i64>() {
+                let lhs_span = Span::new(lite_arg.span.start(), lite_arg.span.start() + lhs.len());
+                let unit_span = Span::new(lite_arg.span.start() + lhs.len(), lite_arg.span.end());
+                return (
+                    SpannedExpression::new(
+                        Expression::unit(x.spanned(lhs_span), unit_group.0.spanned(unit_span)),
+                        lite_arg.span,
+                    ),
+                    None,
+                );
             }
         }
     }
@@ -393,7 +396,7 @@ fn parse_invocation(
     if err.is_some() {
         return (garbage(lite_arg.span), err);
     };
-    let (lite_block, err) = block(tokens);
+    let (lite_block, err) = parse_block(tokens);
     if err.is_some() {
         return (garbage(lite_arg.span), err);
     };
@@ -699,7 +702,7 @@ fn parse_table(
         return (garbage(lite_inner.span()), err);
     }
 
-    let (lite_header, err) = block(tokens);
+    let (lite_header, err) = parse_block(tokens);
     if err.is_some() {
         return (garbage(lite_inner.span()), err);
     }
@@ -722,7 +725,7 @@ fn parse_table(
         if err.is_some() {
             return (garbage(arg.span), err);
         }
-        let (lite_cell, err) = block(tokens);
+        let (lite_cell, err) = parse_block(tokens);
         if err.is_some() {
             return (garbage(arg.span), err);
         }
@@ -853,7 +856,7 @@ fn parse_arg(
                         return (garbage(lite_arg.span), err);
                     }
 
-                    let (lite_block, err) = block(tokens);
+                    let (lite_block, err) = parse_block(tokens);
                     if err.is_some() {
                         return (garbage(lite_arg.span), err);
                     }
@@ -908,7 +911,7 @@ fn parse_arg(
                         return (garbage(lite_arg.span), err);
                     }
 
-                    let (lite_block, err) = block(tokens);
+                    let (lite_block, err) = parse_block(tokens);
                     if err.is_some() {
                         return (garbage(lite_arg.span), err);
                     }
@@ -934,107 +937,6 @@ fn parse_arg(
         }
     }
 }
-
-/*
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[derive(Clone, Debug)]
-    struct MockRegistry {}
-
-    impl MockRegistry {
-        fn new() -> Self {
-            MockRegistry {}
-        }
-    }
-
-    impl SignatureRegistry for MockRegistry {
-        fn has(&self, _name: &str) -> bool {
-            false
-        }
-
-        fn get(&self, _name: &str) -> Option<nu_protocol::Signature> {
-            None
-        }
-
-        fn clone_box(&self) -> Box<dyn SignatureRegistry> {
-            Box::new(self.clone())
-        }
-    }
-
-    /*
-    #[test]
-    fn parse_integer() -> Result<(), ParseError> {
-        let raw = "32".to_string();
-        let input = raw.clone().spanned(Span::new(0, raw.len()));
-        let scope = MockRegistry::new();
-        let result = parse_arg(SyntaxShape::Int, &scope, &input);
-        assert_eq!(result.1, None);
-        assert_eq!(result.0.expr, Expression::integer(BigInt::from(32)));
-        Ok(())
-    }
-
-    #[test]
-    fn parse_number() -> Result<(), ParseError> {
-        let scope = MockRegistry::new();
-
-        let raw = "-32.2".to_string();
-        let input = raw.clone().spanned(Span::new(0, raw.len()));
-        let result = parse_arg(SyntaxShape::Number, &scope, &input);
-        assert_eq!(result.1, None);
-        assert_eq!(
-            result.0.expr,
-            Expression::decimal(BigDecimal::new(BigInt::from(-322), 1))
-        );
-
-        let raw = "32.2".to_string();
-        let input = raw.clone().spanned(Span::new(0, raw.len()));
-        let result = parse_arg(SyntaxShape::Number, &scope, &input);
-        assert_eq!(result.1, None);
-        assert_eq!(
-            result.0.expr,
-            Expression::decimal(BigDecimal::new(BigInt::from(322), 1))
-        );
-
-        let raw = "36893488147419103232.54".to_string();
-        let input = raw.clone().spanned(Span::new(0, raw.len()));
-        let result = parse_arg(SyntaxShape::Number, &scope, &input);
-        assert_eq!(result.1, None);
-        assert_eq!(
-            result.0.expr,
-            Expression::decimal(BigDecimal::new(
-                BigInt::from(3689348814741910323254 as i128),
-                2
-            ))
-        );
-
-        let raw = "-34".to_string();
-        let input = raw.clone().spanned(Span::new(0, raw.len()));
-        let result = parse_arg(SyntaxShape::Number, &scope, &input);
-        assert_eq!(result.1, None);
-        assert_eq!(result.0.expr, Expression::integer(BigInt::from(-34)));
-
-        let raw = "34".to_string();
-        let input = raw.clone().spanned(Span::new(0, raw.len()));
-        let result = parse_arg(SyntaxShape::Number, &scope, &input);
-        assert_eq!(result.1, None);
-        assert_eq!(result.0.expr, Expression::integer(BigInt::from(34)));
-
-        let raw = "36893488147419103232".to_string();
-        let input = raw.clone().spanned(Span::new(0, raw.len()));
-        let result = parse_arg(SyntaxShape::Number, &scope, &input);
-        assert_eq!(result.1, None);
-        assert_eq!(
-            result.0.expr,
-            Expression::integer(BigInt::from(36893488147419103232 as u128))
-        );
-
-        Ok(())
-    }
-    */
-}
-*/
 
 /// Match the available flags in a signature with what the user provided. This will check both long-form flags (--long) and shorthand flags (-l)
 /// This also allows users to provide a group of shorthand flags (-la) that correspond to multiple shorthand flags at once.
@@ -1136,7 +1038,7 @@ fn parse_parenthesized_expression(
                 return (garbage(lite_arg.span), err);
             }
 
-            let (lite_block, err) = block(tokens);
+            let (lite_block, err) = parse_block(tokens);
             if err.is_some() {
                 return (garbage(lite_arg.span), err);
             }
@@ -1785,7 +1687,9 @@ fn parse_call(
                 )),
             );
         }
-        if let Ok(contents) = std::fs::read_to_string(&lite_cmd.parts[1].item) {
+        if let Ok(contents) =
+            std::fs::read_to_string(expand_path(&lite_cmd.parts[1].item).into_owned())
+        {
             let _ = parse(&contents, 0, scope);
         } else {
             return (
@@ -2128,7 +2032,7 @@ pub fn parse(
     if error.is_some() {
         return (Block::basic(), error);
     }
-    let (lite_block, error) = block(output);
+    let (lite_block, error) = parse_block(output);
     if error.is_some() {
         return (Block::basic(), error);
     }
@@ -2137,12 +2041,12 @@ pub fn parse(
 }
 
 #[test]
-fn unit_parse_byte_units() -> Result<(), ParseError> {
+fn unit_parse_byte_units() {
     struct TestCase {
         string: String,
         value: i64,
         unit: Unit,
-    };
+    }
 
     let cases = [
         TestCase {
@@ -2215,6 +2119,41 @@ fn unit_parse_byte_units() -> Result<(), ParseError> {
             value: 27,
             unit: Unit::Petabyte,
         },
+        TestCase {
+            string: String::from("10kib"),
+            value: 10,
+            unit: Unit::Kibibyte,
+        },
+        TestCase {
+            string: String::from("123KiB"),
+            value: 123,
+            unit: Unit::Kibibyte,
+        },
+        TestCase {
+            string: String::from("24kiB"),
+            value: 24,
+            unit: Unit::Kibibyte,
+        },
+        TestCase {
+            string: String::from("10mib"),
+            value: 10,
+            unit: Unit::Mebibyte,
+        },
+        TestCase {
+            string: String::from("123MiB"),
+            value: 123,
+            unit: Unit::Mebibyte,
+        },
+        TestCase {
+            string: String::from("10gib"),
+            value: 10,
+            unit: Unit::Gibibyte,
+        },
+        TestCase {
+            string: String::from("123GiB"),
+            value: 123,
+            unit: Unit::Gibibyte,
+        },
     ];
 
     for case in cases.iter() {
@@ -2237,5 +2176,4 @@ fn unit_parse_byte_units() -> Result<(), ParseError> {
             )
         );
     }
-    Ok(())
 }

@@ -49,7 +49,7 @@ impl RenderContext {
         self.frame_buffer = vec![(0, 0, 0); self.width * self.height as usize];
     }
 
-    fn render_to_screen_lores(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    fn render_to_screen_lores(&mut self) {
         let mut prev_color: Option<(u8, u8, u8)> = None;
         let mut prev_count = 1;
 
@@ -63,7 +63,7 @@ impl RenderContext {
                 Some(c) => {
                     print!(
                         "{}",
-                        ansi_term::Colour::RGB(c.0, c.1, c.2)
+                        nu_ansi_term::Color::RGB(c.0, c.1, c.2)
                             .paint((0..prev_count).map(|_| "█").collect::<String>())
                     );
                     prev_color = Some(*pixel);
@@ -80,15 +80,14 @@ impl RenderContext {
             if let Some(color) = prev_color {
                 print!(
                     "{}",
-                    ansi_term::Colour::RGB(color.0, color.1, color.2)
+                    nu_ansi_term::Color::RGB(color.0, color.1, color.2)
                         .paint((0..prev_count).map(|_| "█").collect::<String>())
                 );
             }
         }
         outln!("{}", Attribute::Reset);
-        Ok(())
     }
-    fn render_to_screen_hires(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    fn render_to_screen_hires(&mut self) {
         let mut prev_fg: Option<(u8, u8, u8)> = None;
         let mut prev_bg: Option<(u8, u8, u8)> = None;
         let mut prev_count = 1;
@@ -109,8 +108,8 @@ impl RenderContext {
                 (Some(c), Some(d)) => {
                     print!(
                         "{}",
-                        ansi_term::Colour::RGB(c.0, c.1, c.2)
-                            .on(ansi_term::Colour::RGB(d.0, d.1, d.2,))
+                        nu_ansi_term::Color::RGB(c.0, c.1, c.2)
+                            .on(nu_ansi_term::Color::RGB(d.0, d.1, d.2,))
                             .paint((0..prev_count).map(|_| "▀").collect::<String>())
                     );
                     prev_fg = Some(top_pixel);
@@ -132,16 +131,15 @@ impl RenderContext {
             if let (Some(c), Some(d)) = (prev_fg, prev_bg) {
                 print!(
                     "{}",
-                    ansi_term::Colour::RGB(c.0, c.1, c.2)
-                        .on(ansi_term::Colour::RGB(d.0, d.1, d.2,))
+                    nu_ansi_term::Color::RGB(c.0, c.1, c.2)
+                        .on(nu_ansi_term::Color::RGB(d.0, d.1, d.2,))
                         .paint((0..prev_count).map(|_| "▀").collect::<String>())
                 );
             }
         }
         outln!("{}", Attribute::Reset);
-        Ok(())
     }
-    pub fn flush(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn flush(&mut self) {
         if self.lores_mode {
             self.render_to_screen_lores()
         } else {
@@ -277,7 +275,7 @@ pub fn view_contents(
         }
     }
 
-    render_context.flush()?;
+    render_context.flush();
 
     let _ = std::io::stdout().execute(crossterm::cursor::Show);
 
@@ -353,7 +351,7 @@ pub fn view_contents_interactive(
 
                 render_context.frame_buffer[count] = (rgb[0], rgb[1], rgb[2]);
             }
-            render_context.flush()?;
+            render_context.flush();
 
             if rawkey.is_pressed(rawkey::KeyCode::Escape) {
                 break 'gameloop;

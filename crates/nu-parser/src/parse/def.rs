@@ -1,18 +1,24 @@
-use crate::parse::{classify_block, util::trim_quotes};
+use crate::{
+    lex::tokens::LiteCommand,
+    parse::{classify_block, util::trim_quotes},
+};
 
 use indexmap::IndexMap;
 use nu_errors::ParseError;
 use nu_protocol::hir::Block;
-use nu_source::SpannedItem;
+use nu_source::{HasSpan, SpannedItem};
 
 //use crate::errors::{ParseError, ParseResult};
-use crate::lex::{block, lex, LiteCommand};
+use crate::lex::lexer::{lex, parse_block};
 
 use crate::ParserScope;
 
-use self::param_flag_list::parse_signature;
+use self::signature::parse_signature;
 
-mod param_flag_list;
+mod data_structs;
+mod primitives;
+mod signature;
+mod tests;
 
 pub(crate) fn parse_definition(call: &LiteCommand, scope: &dyn ParserScope) -> Option<ParseError> {
     // A this point, we've already handled the prototype and put it into scope;
@@ -50,7 +56,7 @@ pub(crate) fn parse_definition(call: &LiteCommand, scope: &dyn ParserScope) -> O
                 if err.is_some() {
                     return err;
                 };
-                let (lite_block, err) = block(tokens);
+                let (lite_block, err) = parse_block(tokens);
                 if err.is_some() {
                     return err;
                 };

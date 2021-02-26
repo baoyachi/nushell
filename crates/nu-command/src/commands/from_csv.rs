@@ -8,7 +8,7 @@ pub struct FromCSV;
 
 #[derive(Deserialize)]
 pub struct FromCSVArgs {
-    headerless: bool,
+    noheaders: bool,
     separator: Option<Value>,
 }
 
@@ -27,9 +27,9 @@ impl WholeStreamCommand for FromCSV {
                 Some('s'),
             )
             .switch(
-                "headerless",
+                "noheaders",
                 "don't treat the first row as column names",
-                None,
+                Some('n'),
             )
     }
 
@@ -50,7 +50,12 @@ impl WholeStreamCommand for FromCSV {
             },
             Example {
                 description: "Convert comma-separated data to a table, ignoring headers",
-                example: "open data.txt | from csv --headerless",
+                example: "open data.txt | from csv --noheaders",
+                result: None,
+            },
+            Example {
+                description: "Convert comma-separated data to a table, ignoring headers",
+                example: "open data.txt | from csv -n",
                 result: None,
             },
             Example {
@@ -67,7 +72,7 @@ async fn from_csv(args: CommandArgs) -> Result<OutputStream, ShellError> {
 
     let (
         FromCSVArgs {
-            headerless,
+            noheaders,
             separator,
         },
         input,
@@ -95,7 +100,7 @@ async fn from_csv(args: CommandArgs) -> Result<OutputStream, ShellError> {
         _ => ',',
     };
 
-    from_delimited_data(headerless, sep, "CSV", input, name).await
+    from_delimited_data(noheaders, sep, "CSV", input, name).await
 }
 
 #[cfg(test)]
@@ -107,6 +112,6 @@ mod tests {
     fn examples_work_as_expected() -> Result<(), ShellError> {
         use crate::examples::test as test_examples;
 
-        Ok(test_examples(FromCSV {})?)
+        test_examples(FromCSV {})
     }
 }

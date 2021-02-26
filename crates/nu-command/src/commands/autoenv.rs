@@ -6,7 +6,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 pub struct Autoenv;
 
 #[derive(Deserialize, Serialize, Debug, Default)]
@@ -20,11 +20,12 @@ impl Trusted {
         }
     }
 }
-pub fn file_is_trusted(nu_env_file: &PathBuf, content: &[u8]) -> Result<bool, ShellError> {
+pub fn file_is_trusted(nu_env_file: &Path, content: &[u8]) -> Result<bool, ShellError> {
     let contentdigest = Sha256::digest(&content).as_slice().to_vec();
     let nufile = std::fs::canonicalize(nu_env_file)?;
 
     let trusted = read_trusted()?;
+
     Ok(trusted.files.get(&nufile.to_string_lossy().to_string()) == Some(&contentdigest))
 }
 
